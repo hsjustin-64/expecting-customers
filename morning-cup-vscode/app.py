@@ -113,8 +113,8 @@ def validate_config(c):
 @app.before_request
 def local_only():
     public = app.config.get('PUBLIC_DEMO', False)
-    if not public and request.host.split(':')[0] not in ('127.0.0.1','localhost'):
-        return jsonify(error='로컬 접속만 지원합니다.'),403
+    #if not public and request.host.split(':')[0] not in ('127.0.0.1','localhost'):
+    #    return jsonify(error='로컬 접속만 지원합니다.'),403
     if request.method == 'POST':
         origin=request.headers.get('Origin')
         allowed = ('http://'+request.host, 'https://'+request.host) if public else ('http://'+request.host,)
