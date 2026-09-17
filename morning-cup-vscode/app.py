@@ -309,4 +309,7 @@ def closing():
     return jsonify(ok=True)
 
 if __name__=='__main__':
-    app.run(host='127.0.0.1',port=8765,debug=False,threaded=False)
+    # Railway가 환경 변수로 지정한 포트를 가져오거나, 없으면 8765를 사용합니다.
+    port = int(os.environ.get("PORT", 8765))
+    # host를 '0.0.0.0'으로 설정하여 Railway 플랫폼의 외부 접속을 허용합니다.
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=False)
