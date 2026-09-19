@@ -117,7 +117,7 @@ def local_only():
     #    return jsonify(error='로컬 접속만 지원합니다.'),403
     if request.method == 'POST':
         origin=request.headers.get('Origin')
-        allowed = ('http://'+request.host, 'https://'+request.host)
+        allowed = ('http://'+request.host, 'https://'+request.host) if public else ('http://'+request.host,)
         if not public and app.config['LIVE_SERVER']:
             allowed = (*allowed, *LIVE_ORIGINS)
         if origin and origin not in allowed:

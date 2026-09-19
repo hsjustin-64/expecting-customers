@@ -1,0 +1,9 @@
+function renderSetup(){
+ document.querySelector('nav').style.display='none';
+ $('#breadcrumb').textContent='시작하기 / 내 컴퓨터의 매장';
+ $('#shopName').textContent='처음 오셨군요';
+ $('#banner').textContent='가입 없이 사용합니다. 입력한 판매 기록과 재고는 이 프로그램 폴더에 저장됩니다.';
+ $('#view').innerHTML=`<div class="title-row"><div><div class="eyebrow">WELCOME TO MORNING CUP</div><h1>이제, 우리 가게의 내일을 준비해요.</h1><p>다른 사장님과 데이터가 섞이지 않는 독립 실행 프로그램입니다.</p></div></div><div class="grid"><div class="panel"><h2>내 가게로 시작</h2><p>빈 매장으로 시작합니다. 매장 정보를 저장한 다음 실제 메뉴와 재료를 등록하세요.</p><form id="newShopForm">${input('newShopName','매장 이름','','text','maxlength="100" required placeholder="예: 햇살 베이글"')}<div class="field" style="margin-top:16px"><label for="newShopArea">주요 상권</label><select id="newShopArea" required><option value="">상권을 선택하세요</option>${['university','office','residential','tourist','mixed'].map(k=>`<option value="${k}">${esc(state.area_presets[k].name)}</option>`).join('')}</select></div><button class="primary full">내 매장 만들기</button></form></div><div class="panel"><h2>먼저 샘플로 체험</h2><p>가상 카페의 메뉴 5개와 판매 기록 900행으로 예측·발주 기능을 살펴보세요.</p><button id="trySample">샘플 매장 열기</button><p class="mini">체험 후 매장 설정에서 실제 매장으로 전환할 수 있습니다. 그때 샘플 판매와 재고를 초기화합니다.</p><h3 style="margin-top:30px">준비할 정보</h3><p>메뉴 이름과 가격<br>메뉴별 재료 사용량<br>과거 날짜별 메뉴 판매 수량<br>현재 재료 재고와 입고 예정량</p><p class="mini">하루 판매량과 레시피를 사용하는 카페·베이커리 등 고정 메뉴 매장에 맞춘 초기 버전입니다. 의류 사이즈별 재고나 시간대별 인력 관리는 지원하지 않습니다.</p></div></div>`;
+ $('#newShopForm').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{await api('setup',{mode:'real',name:$('#newShopName').value,area_type:$('#newShopArea').value});tab='settings';await reload();msg('내 매장을 만들었습니다. 메뉴와 재료를 추가하고 레시피를 입력하세요.');});};
+ $('#trySample').onclick=e=>action(e.target,async()=>{await api('setup',{mode:'demo'});tab='today';await reload();msg('가상 매장으로 체험을 시작했습니다.');});
+}
