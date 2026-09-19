@@ -1,207 +1,33 @@
 {
-  "original_source_files": [
-    "README.md",
-    "VERIFICATION.md",
-    "app.py",
-    "areas.py",
-    "demo_server.py",
-    "engine.py",
-    "install.bat",
-    "requirements-demo.txt",
-    "requirements-lock.txt",
-    "requirements.txt",
-    "start.bat",
-    "static/app.js",
-    "static/area.js",
-    "static/index.html",
-    "static/style.css",
-    "test_areas.py",
-    "test_demo.py",
-    "tests.py"
-  ],
-  "missing_original_files": [],
-  "files": [
-    {
-      "path": ".gitignore",
-      "sha256": "d08dd6aa44bcc832990b8ac797663de057e823dec5266aa05216e3869cd79034",
-      "bytes": 64
-    },
-    {
-      "path": ".vscode/extensions.json",
-      "sha256": "999ec7f4867842f563b20a249bbf0b62fe98c6b7a6c592a599cb234de6920660",
-      "bytes": 88
-    },
-    {
-      "path": ".vscode/launch.json",
-      "sha256": "3943d399dee64dff1a74cbcdee504e880bbcc48a11ea535011f25d9516e8e3c8",
-      "bytes": 390
-    },
-    {
-      "path": ".vscode/settings.json",
-      "sha256": "79aeabc8aad38a8b0d6ec4b9ca02cf3f6cbcbdd35a45bbfe48e7438b766fb20a",
-      "bytes": 409
-    },
-    {
-      "path": "PORTABILITY_CHECK.md",
-      "sha256": "19701a3e93ad7919df006f8a0769f0efda9ff3910a7de48bb840e134656b61e5",
-      "bytes": 2294
-    },
-    {
-      "path": "README.md",
-      "sha256": "db9e7f29a7d77efe870dbb625b46ac12d181909144ec8c55ab08d51f64f13273",
-      "bytes": 8953
-    },
-    {
-      "path": "VERIFICATION.md",
-      "sha256": "d2b7ec8f2b88952a271feaba916e2247ca737dcddec3331b1065e7e1ce73bc38",
-      "bytes": 1929
-    },
-    {
-      "path": "app.py",
-      "sha256": "00e7f668db1fd595ca8b76df129bc979645bc2af1221e34d08bfed7fccdee2cd",
-      "bytes": 15487
-    },
-    {
-      "path": "areas.py",
-      "sha256": "04fbafe6cdc83cd799ab3993b8ed50e7a9af46b3294299938ece24c9ed0911ef",
-      "bytes": 5303
-    },
-    {
-      "path": "check_environment.py",
-      "sha256": "822461a583996b035b664e7dbae3fa190338b27b3d4e53dffba60eb82de7635d",
-      "bytes": 1179
-    },
-    {
-      "path": "demo_server.py",
-      "sha256": "9819156c95c9a193c0f62818c75a52188a77e89273e3f8c78fce8997546cb289",
-      "bytes": 865
-    },
-    {
-      "path": "engine.py",
-      "sha256": "1e167f19d359ed1f0274748b5be3890c9a84b2b8906e7873badd4398517239a5",
-      "bytes": 8774
-    },
-    {
-      "path": "index.html",
-      "sha256": "6b2ad53460f4d4192fd10f2e1494021ac3c6780e243dd4ec85ef2c0b8ac28abc",
-      "bytes": 225
-    },
-    {
-      "path": "install.bat",
-      "sha256": "daafcbd34f915d64b93d97a1019cc4118b02f1fd9878938c5b78889aec0b27ee",
-      "bytes": 514
-    },
-    {
-      "path": "install.py",
-      "sha256": "ff11df418d85d779af8013c33e121a1c422edba2b52b8c7f119233aec2cb2c8c",
-      "bytes": 2446
-    },
-    {
-      "path": "requirements-demo.txt",
-      "sha256": "c34eb554e053520137a531ea3e2a30729c6a19e8180d7222f8ab1eb6198cf96e",
-      "bytes": 36
-    },
-    {
-      "path": "requirements-lock.txt",
-      "sha256": "0d1f1c2e9d8373561b2a1bba31054a666a56300181d510855b87f39775f03d40",
-      "bytes": 464
-    },
-    {
-      "path": "requirements.txt",
-      "sha256": "c95b9dca455a61e637fcac3dd875ed3e79221883fdcecd66d923f4a658447067",
-      "bytes": 135
-    },
-    {
-      "path": "stan_compat.py",
-      "sha256": "56675c1c3031782a4a77d0167a5a66d66031d0c9ce2349c44f4091c1a6709cda",
-      "bytes": 1141
-    },
-    {
-      "path": "start-backend.bat",
-      "sha256": "e80c3ea7bdf0cf410b0f1e25b9cb45fb57a571a377a4e31c9e56fc9516263e44",
-      "bytes": 499
-    },
-    {
-      "path": "start.bat",
-      "sha256": "6015a87a4b8068a6c3fd635192bf9f2a7af136957129819df426236473fbb41a",
-      "bytes": 445
-    },
-    {
-      "path": "static/app.js",
-      "sha256": "b45dfe4ff6ebeb5a8b6b8e582cdb699954c7c38a8eb9baecdf63a56a463950b0",
-      "bytes": 22572
-    },
-    {
-      "path": "static/area.js",
-      "sha256": "499c2d5668a4fcbeef336f6ebc24d816ffb2278c1a4dc563747f275b31b0ebc5",
-      "bytes": 6421
-    },
-    {
-      "path": "static/index.html",
-      "sha256": "4b4e172c99906f73541d2749ff86ef6a359bce5a3dc3129357b9b3fc955e2463",
-      "bytes": 1466
-    },
-    {
-      "path": "static/setup.js",
-      "sha256": "7230dc5a003546e07a76c58dde20441c2a8246a8ae01c13caf325719c946ce34",
-      "bytes": 2620
-    },
-    {
-      "path": "static/shop-editor.js",
-      "sha256": "d3adf828507dbc49ea9c67606800ca0c08dc05b703ed3c7cb0e7227b2016e553",
-      "bytes": 4543
-    },
-    {
-      "path": "static/style.css",
-      "sha256": "35dffebbea390731e032b636c47a1196a7fda279603c36dd167e65b7528f0ce5",
-      "bytes": 6673
-    },
-    {
-      "path": "test_areas.py",
-      "sha256": "b689e29f023dcdea9b8dc2023f7652da704789d901d9dfbed366ee6809824cd5",
-      "bytes": 3993
-    },
-    {
-      "path": "test_demo.py",
-      "sha256": "68862e1b30bd9be5ff4f95d78433057430d42874645c18510490507224831690",
-      "bytes": 1578
-    },
-    {
-      "path": "test_live_server.py",
-      "sha256": "85d71352579b7a22c442a3d41907f368130cf3097fdb841a1ad90489f99e4944",
-      "bytes": 1671
-    },
-    {
-      "path": "test_setup.py",
-      "sha256": "e57819cec173337394bb2f62fd401a11bbb1af45415ff8d1b091b5270333246e",
-      "bytes": 2411
-    },
-    {
-      "path": "test_stan_compat.py",
-      "sha256": "153845aecb817d8622a82e4b6d60097713c84852831508bc4dd00f62223f3e40",
-      "bytes": 1034
-    },
-    {
-      "path": "tests.py",
-      "sha256": "8129762fc13be6b90ef8135e49f770abcbca24e03937835ec8a509da3b4ddb10",
-      "bytes": 5265
-    },
-    {
-      "path": "시작하기.md",
-      "sha256": "0b1a587c32268cf881cd4991ffa9cb20b0b14bd2cdf082a870e19a56332ffd5f",
-      "bytes": 4683
-    },
-    {
-      "path": "한글경로_오류수정.md",
-      "sha256": "ca74d91792602954348e0d8e0052a245bbbdce42447b7082af1cac33ac381f04",
-      "bytes": 1619
-    }
-  ],
-  "excluded_generated_content": [
-    ".venv",
-    "data",
-    "demo-data",
-    "__pycache__",
-    "*.log"
-  ]
+  ".dockerignore": "06ec53d904e6bb9d69f8c9061f2af04557cc2bed11a47dc2ccdb339b68d8fb61",
+  ".env.example": "ad560829979e5ec945fe472d1855a44a37970f9f64d56ac5c5116b8511d74e85",
+  ".gitignore": "b580042e02d9c75904b5b6f8b78a63565bee1ff5277da82c222b9fe19df0cd59",
+  "app.py": "62e7a7f335a0f120ef7757b02af6f906b847f22232aae10c9e5154ea2ce0b713",
+  "areas.py": "04fbafe6cdc83cd799ab3993b8ed50e7a9af46b3294299938ece24c9ed0911ef",
+  "check_environment.py": "822461a583996b035b664e7dbae3fa190338b27b3d4e53dffba60eb82de7635d",
+  "Dockerfile": "604c765f31fa8eda3b78838f2a1663082fc4e398237a37977604996f94d493a9",
+  "domain.py": "24cc78515701562c03b6ed5944e6502f4e470583313132780f3a66a595ab4bdf",
+  "env_config.py": "a5f64731ffa80f46fc6061feaa34ff70215edfd6e75e72278cfa629743ceaf11",
+  "forecasting.py": "ba9e2de548916df447248eb47b73775ccf12f2d08ddb072d01832165e2f2336b",
+  "index.html": "20c28c4f3d9f1572fdcad472351dbe93fb7cea644524c4ef423867286e215976",
+  "install.bat": "daafcbd34f915d64b93d97a1019cc4118b02f1fd9878938c5b78889aec0b27ee",
+  "install.py": "ff11df418d85d779af8013c33e121a1c422edba2b52b8c7f119233aec2cb2c8c",
+  "providers.py": "375a630c59e5c01f2e44c3a1fc434b253695ba119072b5c405e6036f1091fae3",
+  "railway.json": "2197ddbbf02175da94da7e6ce29d1427915d35cb0493a2d6ebd2f42d88716d05",
+  "README.md": "ed515250f1db1f5f17d71150250da0f296c9ece7804c416301fa9a871330d3b6",
+  "requirements-demo.txt": "e6e2dfcb6ceb55a4f47bd7d7227393d63fbcbd4a9bbf0ffce22b7464186d9644",
+  "requirements.txt": "9eea852d56b346a30de303b761235c4d786555056b0a564c5d3f168b63eb0f7b",
+  "samples.py": "0e8b2a9f5789900e59cb6a0edcda72717f545fd70541ab70ce8a3f1b774c1450",
+  "stan_compat.py": "56675c1c3031782a4a77d0167a5a66d66031d0c9ce2349c44f4091c1a6709cda",
+  "start-backend.bat": "e80c3ea7bdf0cf410b0f1e25b9cb45fb57a571a377a4e31c9e56fc9516263e44",
+  "start.bat": "6015a87a4b8068a6c3fd635192bf9f2a7af136957129819df426236473fbb41a",
+  "test_final.py": "1dbd684b0af2052ccebb20d19e56924fcaca94f03ffbcab022755e6732d82476",
+  "VERIFICATION.md": "d02a7eb08cc8eb271f7983834d1e9c796ac17520a063fc41db84a855825e7135",
+  "시작하기.md": "ed515250f1db1f5f17d71150250da0f296c9ece7804c416301fa9a871330d3b6",
+  ".vscode/extensions.json": "999ec7f4867842f563b20a249bbf0b62fe98c6b7a6c592a599cb234de6920660",
+  ".vscode/launch.json": "f4b25e88b085c593c2b7871820d54f566e99c258b77769e0cd141c537e168ae4",
+  ".vscode/settings.json": "01ae56226a956331b5867935f1a41782c4b8ce300508873210a0fd20fb04a774",
+  "static/app.js": "5ece0ff4ee6cc99b07f561f509660fbddac9cb043d6f87332a1dbbe43c4c04ed",
+  "static/index.html": "3fb4480090a8640170b092bde84790c665fd33d4a84d18dd71888fe0f4377e34",
+  "static/style.css": "675ecfc7942f858d2f7540fe9aedd8e752a8e3fda477503ec5f0fbed1c6e8544"
 }

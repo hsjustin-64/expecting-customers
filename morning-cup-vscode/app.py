@@ -1,315 +1,211 @@
-import io
-import os
-import json
-import sqlite3
-import csv
-import secrets
+import csv, io, json, os, secrets, sqlite3, threading
 from pathlib import Path
-from datetime import timedelta, date, datetime
+from datetime import timedelta
+from urllib.parse import urlsplit
 import pandas as pd
-import numpy as np
-from flask import Flask, request, jsonify, send_from_directory, Response, session, has_request_context, redirect
-from engine import now, number, validate_sales, forecast, backtest
-from areas import default_area, validate_area, PRESETS, FEATURES, preview
+from flask import Flask, request, jsonify, session, redirect, Response, abort
+from env_config import load_dotenv
+ROOT=Path(__file__).resolve().parent
+load_dotenv(ROOT/'.env')
+from domain import now, validate_profile, DISTRICTS, AGES
+from areas import PRESETS, FEATURES
+from samples import make_sample, PROFILES
+from forecasting import validate_csv, predict_rows, evaluate
+from providers import population, weather
 
-ROOT = Path(__file__).resolve().parent
-DB = ROOT / 'data' / 'shop.db'
-app = Flask(__name__, static_folder='static')
-app.config['MAX_CONTENT_LENGTH'] = 8 * 1024 * 1024
-app.config['LIVE_SERVER'] = os.environ.get('MORNING_LIVE_SERVER') == '1'
-LIVE_ORIGINS = {'http://127.0.0.1:5500', 'http://localhost:5500'}
+app=Flask(__name__,static_folder='static')
+app.config.update(MAX_CONTENT_LENGTH=4*1024*1024,SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SAMESITE='Lax')
+PUBLIC=os.getenv('PUBLIC_DEMO')=='1'
+if PUBLIC and len(os.getenv('SECRET_KEY',''))<32:raise RuntimeError('Public deployment requires SECRET_KEY (32+ characters)')
+app.secret_key=os.getenv('SECRET_KEY') or secrets.token_hex(32)
+app.config['SESSION_COOKIE_SECURE']=PUBLIC
+DB=Path(os.getenv('DATA_DIR',str(ROOT/'data')))/'demand-v2.db'
+FIT_LOCK=threading.Lock()
 
 def connection():
-    path = DB
-    if app.config.get('PUBLIC_DEMO') and has_request_context():
-        ident = session.get('demo_id')
-        if not isinstance(ident, str) or len(ident) != 32 or any(c not in '0123456789abcdef' for c in ident):
-            ident = secrets.token_hex(16)
-            session['demo_id'] = ident
-        path = Path(app.config['DEMO_DATA_DIR']) / (ident + '.db')
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(path)
-    con.execute('CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    DB.parent.mkdir(parents=True,exist_ok=True)
+    con=sqlite3.connect(DB,timeout=20)
+    con.execute('CREATE TABLE IF NOT EXISTS stores (id TEXT PRIMARY KEY, payload TEXT NOT NULL, updated TEXT NOT NULL)')
     return con
 
-def load(key, default=None):
+def ident():
+    if not PUBLIC:return 'local'
+    if 'store_id' not in session:session['store_id']=secrets.token_hex(16)
+    return session['store_id']
+
+def load():
     with connection() as con:
-        row = con.execute('SELECT value FROM state WHERE key=?', (key,)).fetchone()
-        return json.loads(row[0]) if row else default
+        row=con.execute('SELECT payload FROM stores WHERE id=?',(ident(),)).fetchone()
+    return json.loads(row[0]) if row else None
 
-def save_many(values):
+def save(s):
     with connection() as con:
-        for key, value in values.items():
-            con.execute('INSERT OR REPLACE INTO state VALUES (?,?)', (key,json.dumps(value,ensure_ascii=False,allow_nan=False)))
+        con.execute('INSERT OR REPLACE INTO stores VALUES (?,?,?)',(ident(),json.dumps(s,ensure_ascii=False,allow_nan=False),now().isoformat()))
+        if PUBLIC:con.execute('DELETE FROM stores WHERE updated < ?',((now()-timedelta(days=7)).isoformat(),))
 
-def serialize(df):
-    return json.loads(df.to_json(orient='records',date_format='iso'))
-
-def sales_frame():
-    df = pd.DataFrame(load('sales', []))
-    if df.empty:
-        raise ValueError('판매 기록을 먼저 업로드하세요.')
-    df.ds = pd.to_datetime(df.ds)
-    return df
-
-def demo():
-    today = now().date()
-    items = [{'id': 'ham', 'name':'햄치즈 샌드위치','price':6500,'buffer':2}, {'id':'egg','name':'에그 샌드위치','price':6000,'buffer':1}, {'id':'bagel','name':'크림치즈 베이글','price':5500,'buffer':1}, {'id':'salmon','name':'연어 베이글','price':8500,'buffer':0}, {'id':'latte','name':'카페라떼','price':4500,'buffer':0}]
-    materials = []
-    for ident,name,unit,stock,pack,cost in [('bread','식빵','장',40,20,180),('ham','햄','g',700,500,14),('cheese','슬라이스 치즈','장',40,20,220),('egg','달걀','개',30,30,280),('bagel','베이글','개',30,10,900),('cream','크림치즈','g',800,1000,12),('salmon','훈제 연어','g',600,500,35),('milk','우유','mL',6000,1000,2.5),('coffee','원두','g',800,1000,25)]:
-        materials.append({'id':ident,'name':name,'unit':unit,'stock':stock,'pack_size':pack,'unit_cost':cost,'remaining_today':0,'expiry_date':str(today+timedelta(days=3)),'incoming_qty':0,'incoming_date':str(today+timedelta(days=1)),'incoming_expiry':str(today+timedelta(days=5)),'lead_time_days':1,'cutoff':'15:00'})
-    config = {'name':'모닝컵','source':'demo','items':items,'materials':materials,'recipes':{'ham':{'bread':2,'ham':40,'cheese':1},'egg':{'bread':2,'egg':2},'bagel':{'bagel':1,'cream':35},'salmon':{'bagel':1,'salmon':60,'cream':20},'latte':{'milk':200,'coffee':18}}}
-    rng = np.random.default_rng(17)
-    rows=[]
-    for offset in range(180):
-        ds=today-timedelta(days=180-offset)
-        temp=18+9*np.sin(offset/65)+rng.normal(0,2)
-        rain=float(rng.choice([0,0,0,2,8,20]))
-        for i,it in enumerate(items):
-            qty=max(0,round([25,20,23,12,45][i] + (ds.weekday()>=5)*8 + offset*.015 - rain*.22 + rng.normal(0,3)))
-            rows.append({'ds':str(ds),'item_id':it['id'],'y':qty,'temp_open_mean':round(temp,1),'rain_open_mm':rain,'open_hours':10,'discount_rate':0,'is_closed':0,'sales_data_valid':1,'item_available':1,'stockout_minutes':0,'confirmed_order_qty':0})
-    return config, rows
-
-def validate_config(c):
-    c['area'] = validate_area(c.get('area', default_area()))
-    if not isinstance(c.get('name'),str) or not c['name'].strip():
-        raise ValueError('매장 이름이 필요합니다.')
-    for key in ['items','materials']:
-        if not c.get(key) or len(c[key]) > 30:
-            raise ValueError('메뉴와 재료는 각각 1~30개 등록할 수 있습니다.')
-        ids=[x['id'] for x in c[key]]
-        if len(ids)!=len(set(ids)) or not all(isinstance(i,str) and i.strip() for i in ids):
-            raise ValueError('메뉴·재료 ID는 비어 있거나 중복될 수 없습니다.')
-        if any(not str(x.get('name','')).strip() for x in c[key]):
-            raise ValueError('이름을 입력하세요.')
-    for it in c['items']:
-        for key in ['price','buffer']:
-            it[key]=number(it[key],key)
-    for m in c['materials']:
-        for key in ['stock','unit_cost','remaining_today','incoming_qty']:
-            m[key]=number(m[key],key)
-        m['pack_size']=number(m['pack_size'],'주문 묶음',.001)
-        lead=number(m['lead_time_days'],'납기',0,365)
-        if not lead.is_integer():
-            raise ValueError('납기는 정수 일수여야 합니다.')
-        m['lead_time_days']=int(lead)
-        for k in ['expiry_date','incoming_date','incoming_expiry']:
-            date.fromisoformat(m[k])
-        datetime.strptime(m['cutoff'],'%H:%M')
-        if m['incoming_expiry'] < m['incoming_date']:
-            raise ValueError('입고 사용기한은 입고일 이후여야 합니다.')
-    mats={m['id'] for m in c['materials']}
-    ids={i['id'] for i in c['items']}
-    if not set(c['recipes']).issubset(ids):
-        raise ValueError('레시피에 알 수 없는 메뉴 ID가 있습니다.')
-    for ident in ids:
-        rec=c['recipes'].get(ident,{})
-        if not rec or not set(rec).issubset(mats):
-            raise ValueError('각 메뉴에 등록된 재료로 레시피를 입력하세요.')
-        for k,v in rec.items():
-            rec[k]=number(v,'레시피 사용량',.001)
-    return c
+def required():
+    s=load()
+    if not s:raise ValueError('먼저 매장을 설정하세요.')
+    return s
 
 @app.before_request
-def local_only():
-    public = app.config.get('PUBLIC_DEMO', False)
-    #if not public and request.host.split(':')[0] not in ('127.0.0.1','localhost'):
-    #    return jsonify(error='로컬 접속만 지원합니다.'),403
-    if request.method == 'POST':
-        origin=request.headers.get('Origin')
-        allowed = ('http://'+request.host, 'https://'+request.host)
-        if not public and app.config['LIVE_SERVER']:
-            allowed = (*allowed, *LIVE_ORIGINS)
-        if origin and origin not in allowed:
-            return jsonify(error='다른 사이트의 요청은 허용하지 않습니다.'),403
-        if not request.is_json:
-            return jsonify(error='JSON 요청이 필요합니다.'),415
-    if public:
-        if request.path in ('/api/upload', '/api/start-real'):
-            return jsonify(error='공개 체험판에서는 샘플 데이터만 사용합니다. 실제 판매 파일은 로컬 프로그램에서 업로드하세요.'),403
-        if not request.path.startswith('/static/') and not load('config'):
-            c, s = demo()
-            save_many({'config': c, 'sales': s})
+def guard():
+    host=request.host.split(':')[0]
+    if not PUBLIC and host not in ['localhost','127.0.0.1','[']:abort(403)
+    origin=request.headers.get('Origin')
+    if request.method in ['POST','PUT','DELETE'] and origin:
+        allowed=origin==request.host_url.rstrip('/')
+        # Public requests arrive behind a TLS proxy, but host must still match.
+        if PUBLIC:allowed=urlsplit(origin).scheme=='https' and urlsplit(origin).netloc==request.host
+        elif os.getenv('MORNING_LIVE_SERVER')=='1':allowed=allowed or origin in ['http://localhost:5500','http://127.0.0.1:5500']
+        if not allowed:abort(403)
 
 @app.after_request
-def demo_headers(response):
-    origin = request.headers.get('Origin')
-    if not app.config.get('PUBLIC_DEMO') and app.config['LIVE_SERVER'] and origin in LIVE_ORIGINS:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        response.vary.add('Origin')
-    if app.config.get('PUBLIC_DEMO'):
-        response.headers['Cache-Control'] = 'no-store'
-        response.headers['X-Content-Type-Options'] = 'nosniff'
-        response.headers['X-Frame-Options'] = 'DENY'
-    return response
+def headers(r):
+    r.headers['Cache-Control']='no-store';r.headers['X-Content-Type-Options']='nosniff'
+    origin=request.headers.get('Origin')
+    if not PUBLIC and os.getenv('MORNING_LIVE_SERVER')=='1' and origin in ['http://localhost:5500','http://127.0.0.1:5500']:
+        r.headers['Access-Control-Allow-Origin']=origin;r.headers['Vary']='Origin'
+        r.headers['Access-Control-Allow-Headers']='Content-Type';r.headers['Access-Control-Allow-Methods']='GET,POST,OPTIONS'
+    return r
 
 @app.errorhandler(ValueError)
-@app.errorhandler(KeyError)
-@app.errorhandler(TypeError)
-@app.errorhandler(pd.errors.ParserError)
-@app.errorhandler(pd.errors.EmptyDataError)
-def invalid(err):
-    return jsonify(error=str(err)),400
-
+def invalid(e):return jsonify(error=str(e)),400
 @app.errorhandler(413)
-def too_large(err):
-    return jsonify(error='파일은 8MB 이하만 가능합니다.'),413
+def large(e):return jsonify(error='CSV 크기는 4MB 이하로 제한합니다.'),413
+@app.errorhandler(500)
+def server_error(e):return jsonify(error='서버 처리에 실패했습니다. 다시 시도하거나 실행 창을 확인하세요.'),500
 
 @app.get('/')
-def home():
-    return redirect('/static/index.html')
-
+def root():return redirect('/static/index.html')
+@app.get('/health')
+def health():return jsonify(status='ok')
 @app.get('/api/state')
 def state():
-    config=load('config')
-    if not config:
-        return jsonify(needs_setup=True, area_presets=PRESETS)
-    config.setdefault('area', default_area())
-    sales=load('sales',[])
-    daily={}
-    for row in sales:
-        ds=row['ds'][:10]
-        daily[ds]=daily.get(ds,0)+row['y']
-    return jsonify(public_demo=bool(app.config.get('PUBLIC_DEMO')), config=config, area_presets=PRESETS, area_features=FEATURES, area_preview=preview(config['area'], now().date()+timedelta(days=1)), sales_count=len(sales), sales_start=min(daily) if daily else None, sales_end=max(daily) if daily else None, history=[{'date':d,'qty':daily[d]} for d in sorted(daily)[-28:]], plan=load('plan'), closings=load('closings',[]), comparison=load('comparison'), tomorrow=str(now().date()+timedelta(days=1)), now=now().isoformat(), draft=load('draft'))
-
-@app.post('/api/area')
-def area_settings():
-    a = validate_area(request.json)
-    a['selected'] = True
-    a['updated_at'] = now().isoformat()
-    c = load('config')
-    c['area'] = a
-    save_many({'config': c, 'plan': None, 'draft': None, 'comparison': None})
-    return jsonify(ok=True)
+    s=load()
+    if s:
+        result={k:v for k,v in s.items() if k not in ['history','snapshots']}
+        result.update(history=s['history'][-28:],count=len(s['history']),history_start=s['history'][0]['ds'] if s['history'] else None,history_end=s['history'][-1]['ds'] if s['history'] else None)
+    else:result=dict(needs_setup=True)
+    result.update(presets=PRESETS,features=FEATURES,districts=DISTRICTS,ages=AGES,public_demo=PUBLIC,tomorrow=str(now().date()+timedelta(days=1)),api_status=dict(seoul=bool(os.getenv('SEOUL_API_KEY')),weather=bool(os.getenv('OPENWEATHER_API_KEY'))))
+    return jsonify(result)
 
 @app.post('/api/setup')
-def setup_shop():
-    if app.config.get('PUBLIC_DEMO'):
-        return jsonify(error='공개 체험판에서는 사용할 수 없습니다.'),403
-    if load('config'):
-        return jsonify(error='이미 설정된 매장입니다. 매장 설정에서 수정하세요.'),409
-    mode=request.json.get('mode')
-    if mode not in ('demo','real'):
-        raise ValueError('샘플 체험 또는 내 가게로 시작을 선택하세요.')
-    if mode=='demo':
-        c,s=demo()
-    else:
-        name=request.json.get('name','').strip()
-        if not name or len(name)>100:
-            raise ValueError('매장 이름을 1~100자로 입력하세요.')
-        area=validate_area({**default_area(),'type':request.json.get('area_type'),'selected':True})
-        c={'name':name,'source':'real','area':area,'items':[],'materials':[],'recipes':{}}
-        s=[]
-    save_many({'config':c,'sales':s,'plan':None,'draft':None,'closings':[],'comparison':None})
-    return jsonify(ok=True)
+def setup():
+    if load():raise ValueError('이미 매장이 있습니다. 설정 화면에서 수정하거나 시연 모드를 전환하세요.')
+    body=request.get_json() or {}
+    if body.get('mode')=='demo':s=make_sample(body.get('kind','university'))
+    else:s=dict(mode='real',profile=validate_profile(body),history=[],live=None,weather=None,forecast=None)
+    save(s);return jsonify(ok=True)
 
-@app.post('/api/config')
-def settings():
-    c=validate_config(request.json)
-    c['source']=load('config')['source']
-    old_ids={r['item_id'] for r in load('sales',[])}
-    if not old_ids.issubset({i['id'] for i in c['items']}):
-        raise ValueError('판매 이력이 있는 메뉴 ID는 삭제할 수 없습니다. 실제 매장 전환 후 수정하세요.')
-    save_many({'config':c,'plan':None,'draft':None,'comparison':None})
-    return jsonify(ok=True)
+@app.post('/api/demo')
+def demo():
+    s=load()
+    if s and s['mode']=='real':raise ValueError('실제 매장 기록은 시연 데이터로 덮어쓰지 않습니다. 새 브라우저 세션 또는 별도 폴더에서 체험하세요.')
+    save(make_sample((request.get_json() or {}).get('kind','university')));return jsonify(ok=True)
 
-@app.post('/api/start-real')
-def start_real():
-    c=load('config'); c['source']='real'
-    for m in c['materials']:
-        m['stock']=0; m['incoming_qty']=0; m['remaining_today']=0
-    save_many({'config':c,'sales':[],'plan':None,'draft':None,'closings':[],'comparison':None})
-    return jsonify(ok=True)
-
-@app.post('/api/upload')
-def upload():
-    c=load('config')
-    if c['source']=='demo':
-        raise ValueError('먼저 실제 매장으로 전환하세요. 샘플 재고와 실제 판매를 섞지 않습니다.')
-    df=validate_sales(pd.read_csv(io.StringIO(request.json['csv']),dtype={'item_id':str}),c['items'])
-    if df.empty:
-        raise ValueError('판매 행이 없습니다.')
-    save_many({'sales':serialize(df),'plan':None,'draft':None,'comparison':None})
-    return jsonify(ok=True,rows=len(df))
+@app.post('/api/profile')
+def profile():
+    s=required();p=validate_profile(request.get_json())
+    if s['history'] and p['metric']!=s['profile']['metric']:raise ValueError('기록이 있는 상태에서는 방문객/결제 단위를 변경할 수 없습니다.')
+    changed=any(p[k]!=s['profile'][k] for k in ['zone','lat','lon','open_hour','close_hour'])
+    if changed and s['mode']=='real':
+        s['live']=None;s['weather']=None;s['snapshots']=[]
+        for row in s['history']:
+            for c in ['temp','rain','pop','female']+['age_'+a for a in AGES]:row.pop(c,None)
+    s['profile']=p;s['forecast']=None;s.pop('evaluation',None);save(s);return jsonify(ok=True)
 
 @app.get('/api/template')
 def template():
-    config=load('config')
-    rows=[]
-    for it in config['items']:
-        rows.append({'ds':str(now().date()-timedelta(days=1)),'item_id':it['id'],'y':0,'temp_open_mean':24,'rain_open_mm':0,'open_hours':10,'discount_rate':0,'is_closed':0,'sales_data_valid':1,'item_available':1,'stockout_minutes':0,'confirmed_order_qty':0})
-    return Response('\ufeff'+pd.DataFrame(rows).to_csv(index=False),mimetype='text/csv',headers={'Content-Disposition':'attachment; filename=sales-template.csv'})
+    return Response('\ufeffds,y,valid,is_closed\r\n',mimetype='text/csv',headers={'Content-Disposition':'attachment; filename=demand-template.csv'})
+
+@app.get('/api/export')
+def export():
+    s=required();df=pd.DataFrame(s['history'])
+    if not df.empty:df['source']='synthetic' if s['mode']=='demo' else 'user'
+    return Response('\ufeff'+df.to_csv(index=False),mimetype='text/csv',headers={'Content-Disposition':'attachment; filename='+('synthetic-demo.csv' if s['mode']=='demo' else 'my-store.csv')})
+
+@app.post('/api/upload')
+def upload():
+    s=required()
+    if s['mode']=='demo':raise ValueError('시연 매장에는 실제 기록을 업로드하지 않습니다. 내 매장으로 시작하세요.')
+    file=request.files.get('file')
+    if not file:raise ValueError('CSV 파일을 선택하세요.')
+    try:
+        raw=pd.read_csv(io.StringIO(file.read().decode('utf-8-sig')))
+        if 'source' in raw and raw.source.astype(str).eq('synthetic').any():raise ValueError('가상 데이터는 실제 매장 기록으로 업로드할 수 없습니다.')
+        df=validate_csv(raw)
+    except (UnicodeError,pd.errors.ParserError,pd.errors.EmptyDataError):raise ValueError('UTF-8 CSV 파일인지 확인하세요.')
+    # The provider history can also be supplied as optional daily columns.
+    s['history']=json.loads(df.assign(ds=df.ds.dt.strftime('%Y-%m-%d')).to_json(orient='records',force_ascii=False))
+    s['forecast']=None;s.pop('evaluation',None);save(s);return jsonify(ok=True,count=len(df))
+
+@app.post('/api/refresh')
+def refresh():
+    s=required()
+    if s['mode']=='demo':return jsonify(ok=True,message='시연 모드의 인구·날씨는 가상 데이터입니다. 실제 API를 호출하지 않습니다.')
+    s['live']=population(s['profile']);s['weather']=weather(s['profile']);s['forecast']=None
+    snap=s.get('snapshots',[])
+    live=s['live']
+    if live.get('status')=='ok':
+        prior=[x for x in snap if x['zone']==live['zone'] and 45*60<=(__import__('datetime').datetime.fromisoformat(live['time'])-__import__('datetime').datetime.fromisoformat(x['time'])).total_seconds()<=75*60]
+        if prior:
+            old=(prior[-1]['minimum']+prior[-1]['maximum'])/2
+            if old:live['change_pct']=round(((live['minimum']+live['maximum'])/2/old-1)*100,1)
+        if not snap or snap[-1]['time']!=live['time']:snap.append(live.copy())
+    s['snapshots']=snap[-10000:]
+    archive=s.get('weather_archive',{})
+    if s['weather'].get('status')=='ok':archive[s['weather']['target']]=s['weather']
+    s['weather_archive']=dict(sorted(archive.items())[-400:])
+    save(s);return jsonify(ok=True)
+
+def enriched_history(s):
+    rows=[dict(x) for x in s['history']]
+    if s['mode']=='demo':return rows
+    from datetime import datetime
+    grouped={}
+    for snap in s.get('snapshots',[]):
+        stamp=datetime.fromisoformat(snap['time'])
+        if snap['zone']==s['profile']['zone'] and s['profile']['open_hour']<=stamp.hour<s['profile']['close_hour']:
+            # One sample per hour avoids refresh frequency weighting.
+            grouped.setdefault(str(stamp.date()),{})[stamp.hour]=snap
+    for row in rows:
+        w=s.get('weather_archive',{}).get(row['ds'])
+        if w:
+            row.setdefault('temp',w['temp']);row.setdefault('rain',w['rain'])
+        hourly=grouped.get(row['ds'],{})
+        if len(hourly)>=max(3,(s['profile']['close_hour']-s['profile']['open_hour'])*.75):
+            values=list(hourly.values())
+            candidates={'pop':[(x['minimum']+x['maximum'])/2 for x in values],
+                        'female':[x['female'] for x in values]}
+            candidates.update({'age_'+a:[x['ages'][a] for x in values] for a in AGES})
+            for key,items in candidates.items():
+                if all(v is not None for v in items):row.setdefault(key,sum(items)/len(items))
+    return rows
 
 @app.post('/api/forecast')
-def run_forecast():
-    c=load('config')
-    if not c or not c.get('items') or not c.get('materials'):
-        raise ValueError('먼저 메뉴·재료·레시피를 등록하세요.')
-    plan=forecast(sales_frame(),load('config'),request.json)
-    save_many({'plan':plan,'draft':None})
-    return jsonify(plan)
+def forecast():
+    s=required()
+    if not FIT_LOCK.acquire(blocking=False):return jsonify(error='다른 예측을 계산 중입니다. 잠시 후 다시 눌러주세요.'),429
+    try:s['forecast']=predict_rows(enriched_history(s),s['profile'],s.get('weather'))
+    finally:FIT_LOCK.release()
+    save(s);return jsonify(s['forecast'])
 
-@app.post('/api/backtest')
-def run_backtest():
-    result=backtest(sales_frame(),load('config'))
-    save_many({'comparison':result})
-    return jsonify(result)
+@app.post('/api/evaluate')
+def evaluation():
+    s=required()
+    if not FIT_LOCK.acquire(blocking=False):return jsonify(error='예측 계산 중입니다. 잠시 후 다시 시도하세요.'),429
+    try:s['evaluation']=evaluate(s['history'],s['profile'])
+    finally:FIT_LOCK.release()
+    save(s);return jsonify(s['evaluation'])
 
-@app.post('/api/draft')
-def draft():
-    p=load('plan')
-    if not p or p['target']!=str(now().date()+timedelta(days=1)):
-        raise ValueError('내일 예측을 먼저 실행하세요.')
-    quantities=request.json['packs']
-    orders=[]
-    for row in p['orders']:
-        packs=number(quantities[row['id']],row['name'],0,1e6)
-        if not packs.is_integer():
-            raise ValueError('발주 묶음 수는 정수여야 합니다.')
-        orders.append({**row,'approved_packs':int(packs),'approved_qty':packs*row['pack_size'],'approved_cost':round(packs*row['pack_size']*row['unit_cost'])})
-    d={'target':p['target'],'saved_at':now().isoformat(),'status':'초안 저장 · 거래처 미전송','orders':orders}
-    save_many({'draft':d})
-    return jsonify(d)
-
-@app.get('/api/order.csv')
-def export_order():
-    d=load('draft')
-    if not d:
-        raise ValueError('발주 초안을 먼저 저장하세요.')
-    out=io.StringIO(); w=csv.writer(out)
-    w.writerow(['필요일','재료','묶음 수','수량','단위','예상 원가','예상 입고일','상태'])
-    def safe(v):
-        s=str(v)
-        return "'"+s if s.startswith(('=','+','-','@','\t','\r')) else s
-    for r in d['orders']:
-        w.writerow([safe(v) for v in [d['target'],r['name'],r['approved_packs'],r['approved_qty'],r['unit'],r['approved_cost'],r['arrival'],d['status']]])
-    return Response('\ufeff'+out.getvalue(),mimetype='text/csv',headers={'Content-Disposition':'attachment; filename=order-draft.csv'})
-
-@app.post('/api/closing')
-def closing():
-    data=request.json; ds=date.fromisoformat(data['date'])
-    if ds > now().date():
-        raise ValueError('미래 날짜의 마감은 기록할 수 없습니다.')
-    config=load('config')
-    for row in data['items']:
-        if row['id'] not in {i['id'] for i in config['items']}:
-            raise ValueError('알 수 없는 메뉴입니다.')
-        for col in ['waste','left','stockout_minutes']:
-            row[col]=number(row[col],col,0,1440 if col=='stockout_minutes' else 1e8)
-    records=load('closings',[])
-    records=[r for r in records if r['date']!=data['date']]+[data]
-    sales=load('sales',[])
-    for sale in sales:
-        for row in data['items']:
-            if sale['ds'][:10]==data['date'] and sale['item_id']==row['id']:
-                sale['stockout_minutes']=row['stockout_minutes']
-    save_many({'closings':records,'sales':sales,'plan':None,'draft':None,'comparison':None})
+@app.post('/api/leave-demo')
+def leave_demo():
+    s=required()
+    if s['mode']!='demo':raise ValueError('실제 기록은 삭제하지 않습니다.')
+    with connection() as con:con.execute('DELETE FROM stores WHERE id=?',(ident(),))
     return jsonify(ok=True)
 
 if __name__=='__main__':
-    # Railway가 환경 변수로 지정한 포트를 가져오거나, 없으면 8765를 사용합니다.
-    port = int(os.environ.get("PORT", 8765))
-    # host를 '0.0.0.0'으로 설정하여 Railway 플랫폼의 외부 접속을 허용합니다.
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=False)
+    from waitress import serve
+    serve(app,host='0.0.0.0' if PUBLIC else '127.0.0.1',port=int(os.getenv('PORT','8765')),threads=4)
